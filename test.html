@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Music Key & Solfa App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #fff;
+      text-align: center;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 700px;
+      margin: auto;
+      background: #1e1e1e;
+      padding: 2rem;
+      border-radius: 10px;
+    }
+    select, input, button {
+      margin: 10px;
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+    }
+    button {
+      background: #ff4081;
+      color: white;
+      cursor: pointer;
+    }
+    .result {
+      margin-top: 20px;
+      font-size: 1.2rem;
+      color: #00e676;
+    }
+    hr {
+      margin: 2rem 0;
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎶 Music Key & Solfa App</h1>
+
+    <h3>Instrument Key Mapping</h3>
+    <label>First Instrument:</label>
+    <select id="instrument1">
+      <option value="piano">Piano</option>
+      <option value="guitar">Guitar</option>
+      <option value="violin">Violin</option>
+    </select>
+
+    <label>Key:</label>
+    <select id="key1">
+      <option value="C">C</option>
+      <option value="D">D</option>
+      <option value="E">E</option>
+      <option value="F">F</option>
+      <option value="G">G</option>
+      <option value="A">A</option>
+      <option value="B">B</option>
+    </select>
+
+    <br>
+
+    <label>Second Instrument:</label>
+    <select id="instrument2">
+      <option value="piano">Piano</option>
+      <option value="guitar">Guitar</option>
+      <option value="violin">Violin</option>
+    </select>
+
+    <button onclick="mapKey()">Generate Equivalent Key</button>
+
+    <div class="result" id="mappingResult"></div>
+
+    <hr>
+
+    <h3>Sound Analysis</h3>
+    <label>Choose Key:</label>
+    <select id="analysisKey">
+      <option value="C">C</option>
+      <option value="D">D</option>
+      <option value="E">E</option>
+      <option value="F">F</option>
+      <option value="G">G</option>
+      <option value="A">A</option>
+      <option value="B">B</option>
+    </select>
+    <br>
+    <input type="file" id="audioFile" accept="audio/*">
+    <button onclick="analyzeSound()">Analyze Sound</button>
+
+    <div class="result" id="soundResult"></div>
+  </div>
+
+  <script>
+    // --- Instrument Key Mapping (placeholder logic) ---
+    function mapKey() {
+      const key1 = document.getElementById("key1").value;
+      const instrument2 = document.getElementById("instrument2").value;
+
+      // For now, just return the same key (expand with real transposition rules)
+      let equivalentKey = key1;
+      document.getElementById("mappingResult").innerText =
+        `Equivalent key for ${instrument2}: ${equivalentKey}`;
+    }
+
+    // --- Pitch Detection using Autocorrelation ---
+    function autoCorrelate(buffer, sampleRate) {
+      let SIZE = buffer.length;
+      let rms = 0;
+
+      for (let i = 0; i < SIZE; i++) {
+        let val = buffer[i];
+        rms += val * val;
+      }
+      rms = Math.sqrt(rms / SIZE);
+      if (rms < 0.01) return -1; // too quiet
+
+      let r = new Array(SIZE).fill(0);
+      for (let lag = 0; lag < SIZE; lag++) {
+        for (let i = 0; i < SIZE - lag; i++) {
+          r[lag] += buffer[i] * buffer[i + lag];
+        }
+      }
+
+      let lag = 0;
+      while (r[lag] > r[lag + 1]) lag++;
+      let peak = -1, peakIndex = -1;
+      for (; lag < SIZE; lag++) {
+        if (r[lag] > peak) {
+          peak = r[lag];
+          peakIndex = lag;
+        }
+      }
+
+      if (peakIndex === -1) return -1;
+      return sampleRate / peakIndex;
+    }
+
+    // --- Convert frequency to note ---
+    function frequencyToNote(freq) {
+      const A4 = 440;
+      const noteNumber = 12 * (Math.log(freq / A4) / Math.log(2)) + 69;
+      return Math.round(noteNumber);
+    }
+
+    function noteNumberToName(noteNumber) {
+      const noteNames = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+      return noteNames[noteNumber % 12];
+    }
+
+    // --- Map note to tonic solfa relative to key ---
+    function noteToSolfa(note, key="C") {
+      const scale = ["C","D","E","F","G","A","B"];
+      const solfa = ["Do","Re","Mi","Fa","So","La","Ti"];
+
+      let keyIndex = scale.indexOf(key);
+      let noteIndex = scale.indexOf(note[0]); // crude mapping
+      if (noteIndex === -1) return "?";
+      let relativeIndex = (noteIndex - keyIndex + 7) % 7;
+
+      return solfa[relativeIndex];
+    }
+
+    // --- Analyze uploaded sound ---
+    async function analyzeSound() {
+      const fileInput = document.getElementById("audioFile");
+      if (!fileInput.files[0]) {
+        alert("Please upload an audio file!");
+        return;
+      }
+
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const file = fileInput.files[0];
+      const arrayBuffer = await file.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      const channelData = audioBuffer.getChannelData(0);
+      const freq = autoCorrelate(channelData, audioContext.sampleRate);
+
+      if (freq === -1) {
+        document.getElementById("soundResult").innerText = "Could not detect pitch.";
+        return;
+      }
+
+      const noteNum = frequencyToNote(freq);
+      const noteName = noteNumberToName(noteNum);
+      const chosenKey = document.getElementById("analysisKey").value;
+      const solfa = noteToSolfa(noteName, chosenKey);
+
+      document.getElementById("soundResult").innerText =
+        `Detected Frequency: ${freq.toFixed(2)} Hz → Note: ${noteName} → Solfa (${chosenKey} key): ${solfa}`;
+    }
+  </script>
+</body>
+</html>
